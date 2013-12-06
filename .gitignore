@@ -1,0 +1,118 @@
+//
+// first of all our class:
+//
+
+<?php
+class UsernameChecker {
+    private $db;
+    private $table;
+    private $row;
+    private $output;
+    private $format; 
+    public function __construct($config) {
+        if(!is_array($config)) trigger_error('NO CONFIG');
+        $isset = isset($config['DB'], $config['Table'], $config['Row']);
+        if(!$isset) trigger_error('CONFIG NOT VALID');
+         
+        $this->format = (isset($config['Format']) && ($config['Format'] === 'JSON')) ? 'json' : 'default';
+        $this->output = (isset($config['Output']) && ($config['Output'] === true)) ? true : false;
+         
+        $this->db = $config['DB'];
+        $this->table = $config['Table'];
+        $this->row = $config['Row'];
+    }
+    public function check($username) {
+        $exist = false;
+        $sql = '
+                SELECT
+                       COUNT(*)
+                FROM
+                      '.$this->table.'
+                WHERE
+                      '.$this->row.' = ?';   
+        $stmt = $this->db->prepare($sql);
+        $stmt->bind_param('s', $username);
+        $stmt->execute();
+        $stmt->bind_result($exist);
+        $stmt->fetch();
+        $stmt->close();
+        $exist = (bool)$exist;
+        //if($this->format === 'json') $exist = json_encode($exist);
+         
+        if(!$this->output === true) {
+            //echo $exist;
+            //return;
+        }   
+                 
+        return !$exist;        
+    }
+    public function check_regex($username) {		
+		if (preg_match('/^[a-z_0-9]+$/i', $username)) {
+			return TRUE; 
+		} else {
+			return FALSE;
+		}
+    }	
+    public function check_length($username) {		
+		if(strlen(trim($username)) > 20 && strlen(trim($username)) > 0) {
+			return FALSE;
+        } else {
+        	return TRUE;
+        } 
+    }		 
+}   
+?>
+
+//
+// calling it with an other script:
+//
+
+<?php
+define('SECURE', true);
+include "storescripts/connect_to_mysql.php";
+
+require 'classes/UsernameChecker.php';
+ 
+$config = array('DB' => $mysqli,
+                'Table' => 'tablename',
+                'Row' => 'rowname',
+                'Output' => true,
+                'Format' => 'JSON');
+                 
+$usernameChecker = new UsernameChecker($config);
+
+if(!empty($_POST['username'])) {
+	if ($usernameChecker->check_regex($_POST['username'])) {	
+		if($usernameChecker->check_length($_POST['username'])) {
+			if (!$usernameChecker->check($_POST['username'])) {
+				echo json_encode(array("error" => "Username already taken"));
+			} else {
+				echo json_encode(array("error" => "Username available"));
+			}
+		} else {
+			echo json_encode(array("error" => "Username too long"));
+		}
+	} else {
+		echo json_encode(array("error" => "Allowed symbols: a-z , A-Z , 1-9 and \"_\""));
+	}
+} else { 
+	echo json_encode(array("error" => "Type username"));
+}
+?>
+
+//
+// use this jquery on your form:
+//
+
+<script>
+$(document).ready(function(){
+	$("#username-field").keyup(function(event) {
+		$.post("checkUsername.php", {
+			username: $(this).val()
+		}, 
+		function(data) {
+			$("#name-error").text(data.error ? data.error : "");
+		}, "json");
+	});
+</script>
+});
